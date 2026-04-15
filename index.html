@@ -9,7 +9,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAXnjKaRPkV_6vbAv-lFqHL6juGnw-Twew",
@@ -25,11 +25,16 @@
   const auth = getAuth(app);
   const provider = new GoogleAuthProvider();
 
-  // Expose globally so non-module scripts can use
+  // Detect mobile
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // Expose globally
   window._db = db;
   window._auth = auth;
   window._provider = provider;
+  window._isMobile = isMobile;
   window._signInWithPopup = signInWithPopup;
+  window._signInWithRedirect = signInWithRedirect;
   window._signOut = signOut;
   window._onAuthStateChanged = onAuthStateChanged;
   window._doc = doc;
@@ -37,6 +42,15 @@
   window._getDoc = getDoc;
   window._onSnapshot = onSnapshot;
   window._collection = collection;
+
+  // Handle redirect result (after returning from Google on mobile)
+  getRedirectResult(auth).then(result => {
+    if (result && result.user) {
+      window._currentUser = result.user;
+    }
+  }).catch(err => {
+    console.warn('Redirect result error:', err);
+  });
 
   // Auth state listener
   onAuthStateChanged(auth, (user) => {
@@ -46,7 +60,6 @@
       document.getElementById('app-root').style.display = 'flex';
       document.getElementById('user-name-display').textContent = user.displayName || 'Usuário';
       document.getElementById('user-email-display').textContent = user.email || '';
-      // Load data from Firestore
       window.initFirestoreListeners(user.uid);
     } else {
       window._currentUser = null;
@@ -2764,8 +2777,15 @@ addSwipeClose(document.querySelector('.emp-right'));
 // ═══════════════════════════════════════════════════════
 function loginGoogle() {
   if (!window._auth || !window._provider) return;
-  window._signInWithPopup(window._auth, window._provider)
-    .catch(err => alert('Erro ao entrar: ' + err.message));
+  if (window._isMobile) {
+    // Use redirect on mobile (avoids popup/sessionStorage issues)
+    window._signInWithRedirect(window._auth, window._provider)
+      .catch(err => alert('Erro ao entrar: ' + err.message));
+  } else {
+    // Use popup on desktop
+    window._signInWithPopup(window._auth, window._provider)
+      .catch(err => alert('Erro ao entrar: ' + err.message));
+  }
 }
 
 function logoutApp() {
